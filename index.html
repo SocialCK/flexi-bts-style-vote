@@ -56,6 +56,12 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .note-line{margin-top:22px;font-size:12.5px;color:var(--ink3);text-align:center;}
   @media (max-width:640px){.bar #note{display:none;} .bar #name{width:130px;} .pick{display:none;}}
+  .voted-banner{display:none;background:rgba(0,133,68,.1);border:1px solid var(--green);color:var(--green-d);border-radius:14px;padding:14px 16px;margin-top:20px;font-size:14px;align-items:center;gap:12px;}
+  .voted-banner.show{display:flex;}
+  .voted-banner b{color:var(--ink);}
+  .voted-banner .again{margin-left:auto;color:var(--orange-d);font-weight:700;cursor:pointer;text-decoration:underline;background:none;border:none;font:inherit;padding:0;}
+  body.voted .card{pointer-events:none;opacity:.5;}
+  body.voted .barwrap{opacity:.45;pointer-events:none;}
 </style>
 
 <div class="wrap">
@@ -65,6 +71,11 @@
     <p class="sub">Same scene in six styles &mdash; a student at school with Flexi. Choose the direction you'd want us to produce the video in. One vote each.</p>
     <div class="steps"><span><b>1.</b> Tap your favorite</span> &middot; <span><b>2.</b> Add your name</span> &middot; <span><b>3.</b> Send or copy your vote</span></div>
   </header>
+
+  <div class="voted-banner" id="votedBanner">
+    <span>&#10003; Thanks! Your vote &mdash; <b id="votedWhat"></b> &mdash; was recorded from this browser.</span>
+    <button class="again" id="againBtn">Change my vote</button>
+  </div>
 
   <div class="grid" id="grid">
     <button class="card" data-style="1 &middot; 3D Animated (Pixar-style)" aria-pressed="false">
@@ -111,6 +122,7 @@
 
 <script>
   var TO = "cesar.salza@ck12.org";
+  var KEY = "flexiBtsVoted";
   var selected = null;
   var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
   var pickLabel = document.getElementById("pickLabel");
@@ -119,11 +131,19 @@
   var nameEl = document.getElementById("name");
   var noteEl = document.getElementById("note");
   var toast = document.getElementById("toast");
+  var banner = document.getElementById("votedBanner");
+  var votedWhat = document.getElementById("votedWhat");
+  var againBtn = document.getElementById("againBtn");
 
+  function nameOk(){ return (nameEl.value || "").trim().length > 0; }
   function refresh(){
-    var ok = !!selected;
+    var ok = !!selected && nameOk();
     copyBtn.disabled = !ok; sendBtn.disabled = !ok;
-    pickLabel.innerHTML = ok ? ("Your pick: <b>" + selected + "</b>") : "No style selected yet";
+    if(selected){
+      pickLabel.innerHTML = "Your pick: <b>" + selected + "</b>" + (nameOk() ? "" : " &mdash; add your name");
+    } else {
+      pickLabel.textContent = "No style selected yet";
+    }
   }
   cards.forEach(function(c){
     c.addEventListener("click", function(){
@@ -136,7 +156,7 @@
   function voteText(){
     var nm = (nameEl.value || "").trim() || "(no name)";
     var note = (noteEl.value || "").trim();
-    var t = "Flexi Back-to-School &mdash; Style Vote\\n\\nVoter: " + nm + "\\nStyle: " + selected;
+    var t = "Flexi Back-to-School - Style Vote\\n\\nVoter: " + nm + "\\nStyle: " + selected;
     if(note) t += "\\nNote: " + note;
     return t;
   }
@@ -144,12 +164,26 @@
     toast.textContent = msg; toast.classList.add("show");
     setTimeout(function(){ toast.classList.remove("show"); }, 2200);
   }
+  function applyVoted(){
+    var raw = null; try{ raw = localStorage.getItem(KEY); }catch(e){}
+    if(!raw) return false;
+    var d = {}; try{ d = JSON.parse(raw); }catch(e){}
+    votedWhat.textContent = d.style || "recorded";
+    banner.classList.add("show");
+    document.body.classList.add("voted");
+    return true;
+  }
+  function markVoted(){
+    try{ localStorage.setItem(KEY, JSON.stringify({style:selected, name:(nameEl.value||"").trim(), ts:Date.now()})); }catch(e){}
+    applyVoted();
+    if(banner && banner.scrollIntoView){ banner.scrollIntoView({behavior:"smooth", block:"center"}); }
+  }
   copyBtn.addEventListener("click", function(){
     var t = voteText();
     if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(t).then(function(){ showToast("Vote copied &mdash; paste it in the team channel"); },
-        function(){ fallbackCopy(t); });
-    } else { fallbackCopy(t); }
+      navigator.clipboard.writeText(t).then(function(){ showToast("Vote copied - paste it in the team channel"); markVoted(); },
+        function(){ fallbackCopy(t); markVoted(); });
+    } else { fallbackCopy(t); markVoted(); }
   });
   function fallbackCopy(t){
     var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta);
@@ -157,11 +191,20 @@
     document.body.removeChild(ta);
   }
   sendBtn.addEventListener("click", function(){
-    var subj = "Flexi BTS style vote &mdash; " + ((nameEl.value||"").trim() || "vote");
+    var subj = "Flexi BTS style vote - " + ((nameEl.value||"").trim() || "vote");
     var body = voteText();
     window.location.href = "mailto:" + TO + "?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
     showToast("Opening your email…");
+    markVoted();
+  });
+  againBtn.addEventListener("click", function(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    document.body.classList.remove("voted");
+    banner.classList.remove("show");
+    cards.forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+    selected = null; refresh();
   });
   nameEl.addEventListener("input", refresh);
+  applyVoted();
   refresh();
 </script>
